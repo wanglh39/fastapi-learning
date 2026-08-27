@@ -2,14 +2,31 @@
 
 对应 src/mini_fastapi/application.py，镜像目录结构。
 使用 httpx ASGITransport 直接测试 ASGI app，不起真实服务器。
+覆盖 v0.1（路由+路径参数）到 v0.3（response_model+status_code+HTTPException）。
 """
 
 from __future__ import annotations
 
 import httpx
 import pytest
+from pydantic import BaseModel, Field
 
-from mini_fastapi import JSONResponse, MiniFastAPI
+from mini_fastapi import HTTPException, JSONResponse, MiniFastAPI
+
+
+class ItemCreate(BaseModel):
+    name: str = Field(min_length=1)
+    price: float = Field(gt=0)
+
+
+class ItemRead(BaseModel):
+    name: str
+    price: float
+
+
+class UserRead(BaseModel):
+    name: str
+    age: int
 
 
 def test_app_instance() -> None:
@@ -21,7 +38,7 @@ def test_app_instance() -> None:
 
 
 def _build_app() -> MiniFastAPI:
-    app = MiniFastAPI(title="TestApp", version="0.1.0")
+    app = MiniFastAPI(title="TestApp", version="0.3.0")
 
     @app.get("/")
     def root():
@@ -29,6 +46,10 @@ def _build_app() -> MiniFastAPI:
 
     @app.get("/users/{user_id}")
     def get_user(user_id: str):
+        return {"user_id": user_id}
+
+    @app.get("/users-int/{user_id}")
+    def get_user_int(user_id: int):
         return {"user_id": user_id}
 
     @app.get("/users/{user_id}/posts/{post_id}")
@@ -51,6 +72,26 @@ def _build_app() -> MiniFastAPI:
     def error_endpoint():
         raise RuntimeError("boom")
 
+    @app.get("/search")
+    def search(skip: int = 0, limit: int = 10, q: str | None = None):
+        return {"skip": skip, "limit": limit, "q": q}
+
+    @app.post("/items", response_model=ItemRead, status_code=201)
+    def create_item(item: ItemCreate):
+        return item
+
+    @app.post("/created", status_code=201)
+    def created():
+        return {"id": 1}
+
+    @app.get("/filtered", response_model=UserRead)
+    def filtered():
+        return {"name": "Alice", "age": 30, "password": "secret"}
+
+    @app.get("/teapot")
+    def teapot():
+        raise HTTPException(status_code=418, detail="I'm a teapot")
+
     return app
 
 
@@ -67,11 +108,26 @@ async def test_http_get_root() -> None:
     assert response.json() == {"message": "hello"}
 
 
-async def test_http_path_param() -> None:
+async def test_http_path_param_str() -> None:
     async with await _client() as client:
         response = await client.get("/users/42")
     assert response.status_code == 200
     assert response.json() == {"user_id": "42"}
+
+
+async def test_http_path_param_int() -> None:
+    async with await _client() as client:
+        response = await client.get("/users-int/42")
+    assert response.status_code == 200
+    assert response.json() == {"user_id": 42}
+
+
+async def test_http_path_param_int_invalid_422() -> None:
+    async with await _client() as client:
+        response = await client.get("/users-int/abc")
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert any("user_id" in err["loc"] for err in detail)
 
 
 async def test_http_nested_path_params() -> None:
@@ -114,3 +170,67 @@ async def test_http_endpoint_exception_returns_500() -> None:
         response = await client.get("/error")
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal Server Error"}
+
+
+async def test_http_query_params_with_values() -> None:
+    async with await _client() as client:
+        response = await client.get("/search?skip=5&limit=20&q=hello")
+    assert response.status_code == 200
+    assert response.json() == {"skip": 5, "limit": 20, "q": "hello"}
+
+
+async def test_http_query_params_defaults() -> None:
+    async with await _client() as client:
+        response = await client.get("/search")
+    assert response.status_code == 200
+    assert response.json() == {"skip": 0, "limit": 10, "q": None}
+
+
+async def test_http_request_body_201() -> None:
+    async with await _client() as client:
+        response = await client.post(
+            "/items", json={"name": "Widget", "price": 9.99}
+        )
+    assert response.status_code == 201
+    assert response.json() == {"name": "Widget", "price": 9.99}
+
+
+async def test_http_request_body_422() -> None:
+    async with await _client() as client:
+        response = await client.post(
+            "/items", json={"name": "", "price": -1}
+        )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert any("body" in err["loc"] for err in detail)
+
+
+async def test_http_request_body_invalid_json_422() -> None:
+    async with await _client() as client:
+        response = await client.post(
+            "/items", content=b"not json", headers={"content-type": "application/json"}
+        )
+    assert response.status_code == 422
+
+
+async def test_http_response_model_filter() -> None:
+    async with await _client() as client:
+        response = await client.get("/filtered")
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"name": "Alice", "age": 30}
+    assert "password" not in body
+
+
+async def test_http_status_code() -> None:
+    async with await _client() as client:
+        response = await client.post("/created")
+    assert response.status_code == 201
+    assert response.json() == {"id": 1}
+
+
+async def test_http_http_exception() -> None:
+    async with await _client() as client:
+        response = await client.get("/teapot")
+    assert response.status_code == 418
+    assert response.json() == {"detail": "I'm a teapot"}

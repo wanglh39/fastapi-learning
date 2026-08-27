@@ -17,8 +17,14 @@ from __future__ import annotations
 import inspect
 from typing import Any, Callable
 
+from pydantic import BaseModel
+
+from .exceptions import HTTPException, RequestValidationError
+from .params import parse_query_string, resolve_params
 from .responses import JSONResponse, PlainTextResponse, Response
 from .routing import Router
+
+_BODY_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 class MiniFastAPI:
@@ -34,28 +40,40 @@ class MiniFastAPI:
         self.version = version
         self.router: Router = Router()
 
-    def get(self, path: str, **opts: Any) -> Callable[..., Any]:
+    def get(
+        self,
+        path: str,
+        response_model: type | None = None,
+        status_code: int | None = None,
+        **opts: Any,
+    ) -> Callable[..., Any]:
         """注册 GET 路由。"""
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.router.add_route(path, func, methods=["GET"], **opts)
+            self.router.add_route(
+                path, func, methods=["GET"],
+                response_model=response_model, status_code=status_code, **opts,
+            )
             return func
         return decorator
 
-    def post(self, path: str, **opts: Any) -> Callable[..., Any]:
+    def post(
+        self,
+        path: str,
+        response_model: type | None = None,
+        status_code: int | None = None,
+        **opts: Any,
+    ) -> Callable[..., Any]:
         """注册 POST 路由。"""
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.router.add_route(path, func, methods=["POST"], **opts)
+            self.router.add_route(
+                path, func, methods=["POST"],
+                response_model=response_model, status_code=status_code, **opts,
+            )
             return func
         return decorator
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
-        """ASGI 协议入口，分发 lifespan 与 http 事件。
-
-        Args:
-            scope: 连接/请求元信息字典
-            receive: 接收事件的异步可调用
-            send: 发送事件的异步可调用
-        """
+        """ASGI 协议入口，分发 lifespan 与 http 事件。"""
         if scope["type"] == "lifespan":
             await self._handle_lifespan(scope, receive, send)
             return
@@ -74,7 +92,7 @@ class MiniFastAPI:
                 break
 
     async def _handle_http(self, scope: dict, receive: Callable, send: Callable) -> None:
-        """处理 HTTP 请求：路由匹配 → 调用端点 → 发送响应。"""
+        """处理 HTTP 请求：路由匹配 → 参数绑定 → 调用端点 → 响应。"""
         method = scope["method"]
         path = scope["path"]
 
@@ -84,25 +102,65 @@ class MiniFastAPI:
             return
 
         route, path_params = matched
+        query_params = parse_query_string(scope.get("query_string", b""))
+        body = await self._read_body(receive) if method in _BODY_METHODS else None
+
         try:
-            result = await self._invoke_endpoint(route.endpoint, path_params)
+            kwargs = resolve_params(
+                route.endpoint, route.param_names, path_params, query_params, body,
+            )
+        except RequestValidationError as exc:
+            await JSONResponse({"detail": exc.errors}, status_code=422)(send)
+            return
+
+        try:
+            result = await self._invoke_endpoint(route.endpoint, kwargs)
+        except HTTPException as exc:
+            await JSONResponse({"detail": exc.detail}, status_code=exc.status_code)(send)
+            return
         except Exception:
             await JSONResponse({"detail": "Internal Server Error"}, status_code=500)(send)
             return
 
-        response = self._coerce_result(result)
+        result = self._apply_response_model(result, route.response_model)
+        response = self._coerce_result(result, route.status_code)
         await response(send)
 
-    async def _invoke_endpoint(self, endpoint: Callable[..., Any], path_params: dict[str, str]) -> Any:
+    async def _read_body(self, receive: Callable) -> bytes:
+        """读取完整请求体（循环直到 more_body 为假）。"""
+        body = b""
+        more_body = True
+        while more_body:
+            message = await receive()
+            body += message.get("body", b"")
+            more_body = message.get("more_body", False)
+        return body
+
+    async def _invoke_endpoint(self, endpoint: Callable[..., Any], kwargs: dict[str, Any]) -> Any:
         """调用端点函数，兼容同步与异步端点。"""
         if inspect.iscoroutinefunction(endpoint):
-            return await endpoint(**path_params)
-        return endpoint(**path_params)
+            return await endpoint(**kwargs)
+        return endpoint(**kwargs)
 
-    def _coerce_result(self, result: Any) -> Response:
+    def _apply_response_model(self, result: Any, response_model: type | None) -> Any:
+        """用 response_model 过滤输出字段。"""
+        if response_model is None:
+            return result
+        if isinstance(result, BaseModel):
+            data = result.model_dump()
+        elif isinstance(result, dict):
+            data = result
+        else:
+            data = result
+        return response_model.model_validate(data).model_dump()
+
+    def _coerce_result(self, result: Any, status_code: int | None = None) -> Response:
         """把端点返回值转为 Response 实例。"""
+        code = status_code or 200
         if isinstance(result, Response):
+            if status_code is not None:
+                result.status_code = status_code
             return result
         if isinstance(result, (dict, list)):
-            return JSONResponse(result)
-        return PlainTextResponse(str(result))
+            return JSONResponse(result, status_code=code)
+        return PlainTextResponse(str(result), status_code=code)

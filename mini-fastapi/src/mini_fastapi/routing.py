@@ -53,6 +53,8 @@ class Route:
     methods: list[str] = field(default_factory=lambda: ["GET"])
     pattern: re.Pattern[str] = field(default_factory=lambda: re.compile("^/$"))
     param_names: list[str] = field(default_factory=list)
+    response_model: type | None = None
+    status_code: int | None = None
 
 
 class Router:
@@ -61,7 +63,15 @@ class Router:
     def __init__(self) -> None:
         self.routes: list[Route] = []
 
-    def add_route(self, path: str, endpoint: Callable[..., Any], methods: list[str], **opts: Any) -> None:
+    def add_route(
+        self,
+        path: str,
+        endpoint: Callable[..., Any],
+        methods: list[str],
+        response_model: type | None = None,
+        status_code: int | None = None,
+        **opts: Any,
+    ) -> None:
         """注册一条路由，编译路径模式为正则。"""
         pattern, param_names = compile_path(path)
         route = Route(
@@ -70,6 +80,8 @@ class Router:
             methods=methods,
             pattern=pattern,
             param_names=param_names,
+            response_model=response_model,
+            status_code=status_code,
         )
         self.routes.append(route)
 
