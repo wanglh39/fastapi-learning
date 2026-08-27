@@ -11,6 +11,7 @@
 """
 
 from .application import MiniFastAPI
+from .dependencies import Depends
 from .exceptions import HTTPException, RequestValidationError
 from .params import Body, Path, Query
 from .responses import JSONResponse, PlainTextResponse, Response
@@ -28,5 +29,6 @@ __all__ = [
     "Path",
     "Query",
     "Body",
+    "Depends",
 ]
-__version__ = "0.3.0"
+__version__ = "0.4.0"

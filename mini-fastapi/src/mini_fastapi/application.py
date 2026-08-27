@@ -19,8 +19,9 @@ from typing import Any, Callable
 
 from pydantic import BaseModel
 
+from .dependencies import solve_dependencies
 from .exceptions import HTTPException, RequestValidationError
-from .params import parse_query_string, resolve_params
+from .params import parse_query_string
 from .responses import JSONResponse, PlainTextResponse, Response
 from .routing import Router
 
@@ -92,7 +93,7 @@ class MiniFastAPI:
                 break
 
     async def _handle_http(self, scope: dict, receive: Callable, send: Callable) -> None:
-        """处理 HTTP 请求：路由匹配 → 参数绑定 → 调用端点 → 响应。"""
+        """处理 HTTP 请求：路由匹配 → 依赖解析 → 调用端点 → 响应 → 清理。"""
         method = scope["method"]
         path = scope["path"]
 
@@ -105,26 +106,43 @@ class MiniFastAPI:
         query_params = parse_query_string(scope.get("query_string", b""))
         body = await self._read_body(receive) if method in _BODY_METHODS else None
 
+        cleaners: list[Callable] = []
         try:
-            kwargs = resolve_params(
-                route.endpoint, route.param_names, path_params, query_params, body,
-            )
-        except RequestValidationError as exc:
-            await JSONResponse({"detail": exc.errors}, status_code=422)(send)
-            return
+            try:
+                kwargs, cleaners = await solve_dependencies(
+                    route.endpoint, path_params, query_params, body,
+                )
+            except RequestValidationError as exc:
+                await JSONResponse({"detail": exc.errors}, status_code=422)(send)
+                return
+            except HTTPException as exc:
+                await JSONResponse({"detail": exc.detail}, status_code=exc.status_code)(send)
+                return
 
-        try:
-            result = await self._invoke_endpoint(route.endpoint, kwargs)
-        except HTTPException as exc:
-            await JSONResponse({"detail": exc.detail}, status_code=exc.status_code)(send)
-            return
-        except Exception:
-            await JSONResponse({"detail": "Internal Server Error"}, status_code=500)(send)
-            return
+            try:
+                result = await self._invoke_endpoint(route.endpoint, kwargs)
+            except HTTPException as exc:
+                await JSONResponse({"detail": exc.detail}, status_code=exc.status_code)(send)
+                return
+            except Exception:
+                await JSONResponse({"detail": "Internal Server Error"}, status_code=500)(send)
+                return
 
-        result = self._apply_response_model(result, route.response_model)
-        response = self._coerce_result(result, route.status_code)
-        await response(send)
+            result = self._apply_response_model(result, route.response_model)
+            response = self._coerce_result(result, route.status_code)
+            await response(send)
+        finally:
+            await self._run_cleaners(cleaners)
+
+    async def _run_cleaners(self, cleaners: list[Callable]) -> None:
+        """按 LIFO 顺序执行 yield 依赖的清理函数。"""
+        for cleaner in reversed(cleaners):
+            try:
+                ret = cleaner()
+                if inspect.isawaitable(ret):
+                    await ret
+            except Exception:
+                pass
 
     async def _read_body(self, receive: Callable) -> bytes:
         """读取完整请求体（循环直到 more_body 为假）。"""
