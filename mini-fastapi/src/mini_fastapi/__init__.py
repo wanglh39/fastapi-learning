@@ -13,6 +13,7 @@
 from .application import MiniFastAPI
 from .dependencies import Depends
 from .exceptions import HTTPException, RequestValidationError
+from .openapi import get_openapi, setup_docs
 from .params import Body, Path, Query
 from .responses import JSONResponse, PlainTextResponse, Response
 from .routing import Route, Router
@@ -30,5 +31,7 @@ __all__ = [
     "Query",
     "Body",
     "Depends",
+    "get_openapi",
+    "setup_docs",
 ]
-__version__ = "0.4.0"
+__version__ = "0.5.0"

@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from .dependencies import solve_dependencies
 from .exceptions import HTTPException, RequestValidationError
+from .openapi import setup_docs
 from .params import parse_query_string
 from .responses import JSONResponse, PlainTextResponse, Response
 from .routing import Router
@@ -40,6 +41,7 @@ class MiniFastAPI:
         self.title = title
         self.version = version
         self.router: Router = Router()
+        setup_docs(self)
 
     def get(
         self,

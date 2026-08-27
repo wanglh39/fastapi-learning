@@ -34,7 +34,7 @@ def test_app_instance() -> None:
     app = MiniFastAPI(title="Test", version="0.0.1")
     assert app.title == "Test"
     assert app.version == "0.0.1"
-    assert app.router.routes == []
+    assert len(app.router.routes) == 3  # setup_docs 自动挂载 3 个文档路由
 
 
 def _build_app() -> MiniFastAPI:

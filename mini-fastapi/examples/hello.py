@@ -1,8 +1,11 @@
-"""v0.4 示例：依赖注入（Depends）。
+"""v0.5 示例：OpenAPI 自动文档 + 依赖注入。
 
 运行：
     uv run uvicorn examples.hello:app --reload
 
+    GET /openapi.json             → OpenAPI 3.1 文档
+    GET /docs                     → Swagger UI
+    GET /redoc                    → ReDoc
     GET /                         → {"message": "hello, mini-fastapi"}
     GET /users/42                 → {"user_id": 42}
     GET /items?skip=0&limit=10    → 分页列表
@@ -16,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from mini_fastapi import Depends, HTTPException, MiniFastAPI
 
-app = MiniFastAPI(title="Hello", version="0.4.0")
+app = MiniFastAPI(title="Hello", version="0.5.0")
 
 
 class ItemCreate(BaseModel):
