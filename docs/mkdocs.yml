@@ -1,0 +1,93 @@
+site_name: FastAPI 系统化学习与实践
+site_description: 从底层原理到业务实践，亲手造一个类 FastAPI 框架来深入理解其内部机制
+site_author: fastapi-learning
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换至暗色模式
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换至亮色模式
+  icon:
+    repo: fontawesome/brands/github
+
+repo_url: https://github.com/your-name/fastapi-learning
+repo_name: fastapi-learning
+
+nav:
+  - 首页: index.md
+  - 学习路径总览:
+      - 00-overview/index.md
+  - 阶段 1 · ASGI 与 Starlette:
+      - 01-asgi-starlette/index.md
+  - 阶段 2 · Pydantic 与类型系统:
+      - 02-pydantic/index.md
+  - 阶段 3 · 造轮子：路由与参数绑定:
+      - 03-mini-framework/index.md
+  - 阶段 4 · 依赖注入系统:
+      - 04-dependency-injection/index.md
+  - 阶段 5 · 自动文档生成:
+      - 05-openapi-docs/index.md
+  - 阶段 6 · 中间件、异常与异步:
+      - 06-middleware-async/index.md
+  - 阶段 7 · 框架对比与选型:
+      - 07-framework-comparison/index.md
+  - 阶段 8 · 业务工程化实践:
+      - 08-business-practice/index.md
+  - 阶段 9 · 沉淀与部署:
+      - 09-deployment/index.md
+
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+  - tables
+  - footnotes
+  - attr_list
+  - md_in_html
