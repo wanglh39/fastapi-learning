@@ -14,6 +14,27 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+_PARAM_RE = re.compile(r"\{(\w+)\}")
+
+
+def compile_path(path: str) -> tuple[re.Pattern[str], list[str]]:
+    """把路径模式编译为正则，并提取路径参数名。
+
+    示例：
+        "/users/{user_id}"           → (^/users/(?P<user_id>[^/]+)$, ["user_id"])
+        "/posts/{post_id}/comments"  → (^/posts/(?P<post_id>[^/]+)/comments$, ["post_id"])
+
+    Args:
+        path: 路径模式，参数用 {name} 标记
+
+    Returns:
+        (编译后的正则, 参数名列表)
+    """
+    param_names = _PARAM_RE.findall(path)
+    regex = _PARAM_RE.sub(r"(?P<\1>[^/]+)", path)
+    pattern = re.compile(f"^{regex}$")
+    return pattern, param_names
+
 
 @dataclass
 class Route:
@@ -35,25 +56,38 @@ class Route:
 
 
 class Router:
-    """路由表，负责注册与匹配。
-
-    当前实现：仅存储路由，匹配逻辑在阶段 1 v0.1 填充。
-    """
+    """路由表，负责注册与匹配。"""
 
     def __init__(self) -> None:
         self.routes: list[Route] = []
 
     def add_route(self, path: str, endpoint: Callable[..., Any], methods: list[str], **opts: Any) -> None:
-        """注册一条路由。
-
-        阶段 1 将在此编译路径模式为正则，提取参数名。
-        """
-        route = Route(path=path, endpoint=endpoint, methods=methods)
+        """注册一条路由，编译路径模式为正则。"""
+        pattern, param_names = compile_path(path)
+        route = Route(
+            path=path,
+            endpoint=endpoint,
+            methods=methods,
+            pattern=pattern,
+            param_names=param_names,
+        )
         self.routes.append(route)
 
     def match(self, method: str, path: str) -> tuple[Route, dict[str, str]] | None:
         """匹配请求到路由，返回 (route, path_params) 或 None。
 
-        阶段 1 v0.1 实现正则匹配与路径参数提取。
+        Args:
+            method: HTTP 方法，如 "GET"
+            path: 请求路径，如 "/users/42"
+
+        Returns:
+            匹配成功返回 (route, 路径参数字典)，否则 None
         """
-        raise NotImplementedError("路由匹配将在阶段 1 v0.1 实现")
+        for route in self.routes:
+            if method not in route.methods:
+                continue
+            matched = route.pattern.match(path)
+            if matched is not None:
+                path_params = matched.groupdict()
+                return route, path_params
+        return None
