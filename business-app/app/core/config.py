@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
 
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/blog"
+    database_url: str = "sqlite+aiosqlite:///./blog.db"
     db_pool_size: int = 10
     db_max_overflow: int = 20
 

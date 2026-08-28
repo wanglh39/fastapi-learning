@@ -1,4 +1,11 @@
 """业务逻辑层包。
 
-职责：编排业务规则，调用 repository 访问数据，不直接接触 ORM 查询细节。
+导出 UserService / ArticleService。
 """
+
+from __future__ import annotations
+
+from .article_service import ArticleService
+from .user_service import UserService
+
+__all__ = ["UserService", "ArticleService"]
