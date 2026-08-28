@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Sync deps
+        run: uv sync --all-extras
+        working-directory: business-app
+      - name: Ruff lint
+        run: uv run ruff check app/
+        working-directory: business-app
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Sync deps
+        run: uv sync --extra test
+        working-directory: business-app
+      - name: Run tests
+        run: uv run pytest tests/ -v
+        working-directory: business-app
+
+  mini-fastapi-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Sync deps
+        run: uv sync --extra test
+        working-directory: mini-fastapi
+      - name: Run tests
+        run: uv run pytest tests/ -v
+        working-directory: mini-fastapi
