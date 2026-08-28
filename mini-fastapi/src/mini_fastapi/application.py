@@ -37,11 +37,14 @@ class MiniFastAPI:
         uvicorn.run(app)
     """
 
-    def __init__(self, *, title: str = "MiniFastAPI", version: str = "0.0.0") -> None:
+    def __init__(self, *, title: str = "MiniFastAPI", version: str = "0.06.0") -> None:
         self.title = title
         self.version = version
         self.router: Router = Router()
+        self.user_middleware: list[tuple[type, dict[str, Any]]] = []
+        self.exception_handlers: dict[type[Exception], Callable[..., Any]] = {}
         setup_docs(self)
+        self.middleware_stack: Callable[..., Any] = self._original_app
 
     def get(
         self,
@@ -75,14 +78,42 @@ class MiniFastAPI:
             return func
         return decorator
 
+    def add_middleware(self, middleware_cls: type, **opts: Any) -> None:
+        """向应用添加中间件。"""
+        self.user_middleware.append((middleware_cls, opts))
+        self._build_middleware_stack()
+
+    def _build_middleware_stack(self) -> None:
+        """构建中间件栈（洋葱模型）。"""
+        app: Callable[..., Any] = self._original_app
+        for middleware_cls, opts in reversed(self.user_middleware):
+            app = middleware_cls(app, **opts)
+        self.middleware_stack = app
+
+    def exception_handler(self, exc_type: type[Exception]) -> Callable[..., Any]:
+        """注册异常处理器。"""
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            self.exception_handlers[exc_type] = func
+            return func
+        return decorator
+
+    def _find_exception_handler(self, exc_type: type[Exception]) -> Callable[..., Any] | None:
+        """按异常类型查找处理器（支持子类匹配）。"""
+        for handler_type, handler in self.exception_handlers.items():
+            if issubclass(exc_type, handler_type):
+                return handler
+        return None
+
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
-        """ASGI 协议入口，分发 lifespan 与 http 事件。"""
+        """ASGI 协议入口，通过中间件栈分发。"""
+        await self.middleware_stack(scope, receive, send)
+
+    async def _original_app(self, scope: dict, receive: Callable, send: Callable) -> None:
+        """原始 ASGI 应用（中间件链的最内层）。"""
         if scope["type"] == "lifespan":
             await self._handle_lifespan(scope, receive, send)
-            return
-        if scope["type"] == "http":
+        elif scope["type"] == "http":
             await self._handle_http(scope, receive, send)
-            return
 
     async def _handle_lifespan(self, scope: dict, receive: Callable, send: Callable) -> None:
         """处理应用生命周期事件（启动/关闭）。"""
@@ -114,20 +145,14 @@ class MiniFastAPI:
                 kwargs, cleaners = await solve_dependencies(
                     route.endpoint, path_params, query_params, body,
                 )
-            except RequestValidationError as exc:
-                await JSONResponse({"detail": exc.errors}, status_code=422)(send)
-                return
-            except HTTPException as exc:
-                await JSONResponse({"detail": exc.detail}, status_code=exc.status_code)(send)
+            except Exception as exc:
+                await self._handle_exception(exc, send)
                 return
 
             try:
                 result = await self._invoke_endpoint(route.endpoint, kwargs)
-            except HTTPException as exc:
-                await JSONResponse({"detail": exc.detail}, status_code=exc.status_code)(send)
-                return
-            except Exception:
-                await JSONResponse({"detail": "Internal Server Error"}, status_code=500)(send)
+            except Exception as exc:
+                await self._handle_exception(exc, send)
                 return
 
             result = self._apply_response_model(result, route.response_model)
@@ -135,6 +160,25 @@ class MiniFastAPI:
             await response(send)
         finally:
             await self._run_cleaners(cleaners)
+
+    async def _handle_exception(self, exc: Exception, send: Callable) -> None:
+        """统一异常处理：查找注册的处理器，未命中则默认处理。"""
+        handler = self._find_exception_handler(type(exc))
+        if handler:
+            response = handler(exc)
+            if inspect.iscoroutine(response):
+                response = await response
+            await response(send)
+            return
+
+        if isinstance(exc, HTTPException):
+            await JSONResponse({"detail": exc.detail}, status_code=exc.status_code)(send)
+            return
+        if isinstance(exc, RequestValidationError):
+            await JSONResponse({"detail": exc.errors}, status_code=422)(send)
+            return
+
+        await JSONResponse({"detail": "Internal Server Error"}, status_code=500)(send)
 
     async def _run_cleaners(self, cleaners: list[Callable]) -> None:
         """按 LIFO 顺序执行 yield 依赖的清理函数。"""

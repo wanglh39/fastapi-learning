@@ -13,6 +13,7 @@
 from .application import MiniFastAPI
 from .dependencies import Depends
 from .exceptions import HTTPException, RequestValidationError
+from .middleware import BaseHTTPMiddleware, CORSMiddleware, TimingMiddleware
 from .openapi import get_openapi, setup_docs
 from .params import Body, Path, Query
 from .responses import JSONResponse, PlainTextResponse, Response
@@ -33,5 +34,8 @@ __all__ = [
     "Depends",
     "get_openapi",
     "setup_docs",
+    "BaseHTTPMiddleware",
+    "CORSMiddleware",
+    "TimingMiddleware",
 ]
-__version__ = "0.5.0"
+__version__ = "0.6.0"

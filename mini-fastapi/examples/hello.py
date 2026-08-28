@@ -1,4 +1,4 @@
-"""v0.5 示例：OpenAPI 自动文档 + 依赖注入。
+"""v0.6 示例：中间件 + 异常处理 + OpenAPI + 依赖注入。
 
 运行：
     uv run uvicorn examples.hello:app --reload
@@ -17,9 +17,17 @@
 
 from pydantic import BaseModel, Field
 
-from mini_fastapi import Depends, HTTPException, MiniFastAPI
+from mini_fastapi import (
+    CORSMiddleware,
+    Depends,
+    HTTPException,
+    MiniFastAPI,
+    TimingMiddleware,
+)
 
-app = MiniFastAPI(title="Hello", version="0.5.0")
+app = MiniFastAPI(title="Hello", version="0.6.0")
+app.add_middleware(TimingMiddleware)
+app.add_middleware(CORSMiddleware, allow_origins="*")
 
 
 class ItemCreate(BaseModel):
