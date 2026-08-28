@@ -2,7 +2,7 @@
 
 从底层原理到业务实践，系统掌握 FastAPI 框架。本项目通过**亲手造一个类 FastAPI 轻量级框架**来深入理解其内部机制，并用**官方 FastAPI** 完成一个规范化业务项目，最终沉淀为文档站。
 
-> 文档站地址（GitHub Pages 启用后）：见 `docs/` 目录配置说明。
+> **[在线文档](https://wanglh39.github.io/fastapi-learning/)** — 完整 9 章学习笔记，含代码示例与架构图。
 
 ---
 
